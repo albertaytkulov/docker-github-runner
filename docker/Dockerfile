@@ -1,10 +1,13 @@
-ARG FROM=debian:buster-slim
+ARG FROM=alpine:latest
 FROM ${FROM}
 
-ARG DEBIAN_FRONTEND=noninteractive
+#ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_VERSION="2.26.2"
 ARG GH_RUNNER_VERSION
-ARG DOCKER_COMPOSE_VERSION="1.27.4"
+# Docker and Docker compose installation script dont support alpine distro
+#ARG DOCKER_COMPOSE_VERSION="1.27.4"
+ARG ARCH="arm"
+
 
 ENV RUNNER_NAME=""
 ENV RUNNER_WORK_DIRECTORY="_work"
@@ -27,61 +30,60 @@ LABEL maintainer="me@tcardonne.fr" \
     org.label-schema.vendor="Thomas Cardonne" \
     org.label-schema.docker.cmd="docker run -it tcardonne/github-runner:latest"
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-    apt-get install -y \
+RUN apk update && \
+    apk add \
         curl \
         unzip \
-        apt-transport-https \
         ca-certificates \
-        software-properties-common \
         sudo \
         supervisor \
         jq \
-        iputils-ping \
-        build-essential \
-        zlib1g-dev \
+        # already in alpine iputils-ping \
+        zlib-dev \
         gettext \
-        liblttng-ust0 \
-        libcurl4-openssl-dev \
-        openssh-client && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean
+        lttng-ust-dev \
+        curl-dev \
+        openssh-client
+
+RUN apk add --virtual build-dependencies \
+        build-base \
+        gcc \
+        wget \
+        git
 
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 RUN chmod 644 /etc/supervisor/conf.d/supervisord.conf
 
 # Install Docker CLI
-RUN curl -fsSL https://get.docker.com -o- | sh && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean
+#RUN curl -fsSL https://get.docker.com -o- | sh && \
+#    rm -rf /var/lib/apt/lists/* && \
+#    apt-get clean
 
 # Install Docker-Compose
-RUN curl -L -o /usr/local/bin/docker-compose \
-    "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" && \
-    chmod +x /usr/local/bin/docker-compose
+#RUN curl -L -o /usr/local/bin/docker-compose \
+#    "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" && \
+#    chmod +x /usr/local/bin/docker-compose
 
-RUN cd /tmp && \
-    curl -sL -o git.tgz \
-    https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.gz && \
-    tar zxf git.tgz  && \
-    cd git-${GIT_VERSION}  && \
-    ./configure --prefix=/usr  && \
-    make && \
-    make install && \
-    rm -rf /tmp/*
+#RUN cd /tmp && \
+#    curl -sL -o git.tgz \
+#    https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.gz && \
+#    tar zxf git.tgz  && \
+#    cd git-${GIT_VERSION}  && \
+#    ./configure --prefix=/usr  && \
+#    make && \
+#    make install && \
+#    rm -rf /tmp/*
 
 RUN mkdir -p /home/runner ${AGENT_TOOLSDIRECTORY}
 
 WORKDIR /home/runner
 
 RUN GH_RUNNER_VERSION=${GH_RUNNER_VERSION:-$(curl --silent "https://api.github.com/repos/actions/runner/releases/latest" | grep tag_name | sed -E 's/.*"v([^"]+)".*/\1/')} \
-    && curl -L -O https://github.com/actions/runner/releases/download/v${GH_RUNNER_VERSION}/actions-runner-linux-x64-${GH_RUNNER_VERSION}.tar.gz \
-    && tar -zxf actions-runner-linux-x64-${GH_RUNNER_VERSION}.tar.gz \
-    && rm -f actions-runner-linux-x64-${GH_RUNNER_VERSION}.tar.gz \
+    && curl -L -O https://github.com/actions/runner/releases/download/v${GH_RUNNER_VERSION}/actions-runner-linux-${ARCH}-${GH_RUNNER_VERSION}.tar.gz \
+    && tar -zxf actions-runner-linux-${ARCH}-${GH_RUNNER_VERSION}.tar.gz \
+    && rm -f actions-runner-linux-${ARCH}-${GH_RUNNER_VERSION}.tar.gz \
     && ./bin/installdependencies.sh \
-    && chown -R root: /home/runner \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && chown -R root: /home/runner
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
